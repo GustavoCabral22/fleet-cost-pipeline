@@ -1,0 +1,31 @@
+name: ci
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: frota
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/frota
+      AIRFLOW_HOME: /tmp/airflow
+      PYTHONPATH: .
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Instala Airflow com as constraints oficiais
+        run: >
+          pip install -r requirements-dev.txt
+          -c https://raw.githubusercontent.com/apache/airflow/constraints-3.1.0/constraints-3.12.txt
+      - name: Testes de integridade das DAGs e de SQL
+        run: pytest -v

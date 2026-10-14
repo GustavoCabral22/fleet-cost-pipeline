@@ -1,0 +1,61 @@
+# Ambiente local de estudo: Airflow em modo "standalone" (api-server, scheduler,
+# dag-processor e triggerer num container só). Simples de subir e entender;
+# não é a topologia de produção.
+x-airflow-env: &airflow-env
+  AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-db:5432/airflow
+  AIRFLOW__CORE__EXECUTOR: LocalExecutor
+  AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+  AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_ALL_ADMINS: "True"   # sem login: só para uso local
+  AIRFLOW_CONN_WAREHOUSE: postgresql://postgres:postgres@warehouse:5432/frota
+  PYTHONPATH: /opt/airflow
+
+services:
+  airflow-db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - airflow-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U airflow"]
+      interval: 5s
+      retries: 10
+
+  warehouse:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: frota
+    ports:
+      - "5434:5432"   # para consultar o resultado do seu computador
+    volumes:
+      - ./include/sql/ddl:/docker-entrypoint-initdb.d:ro
+      - warehouse:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d frota"]
+      interval: 5s
+      retries: 10
+
+  airflow:
+    image: apache/airflow:3.1.0
+    command: standalone
+    user: "${AIRFLOW_UID:-50000}:0"
+    environment: *airflow-env
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./include:/opt/airflow/include
+      - ./data:/opt/airflow/data
+    depends_on:
+      airflow-db:
+        condition: service_healthy
+      warehouse:
+        condition: service_healthy
+
+volumes:
+  airflow-db:
+  warehouse:
